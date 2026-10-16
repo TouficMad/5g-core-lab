@@ -1,0 +1,14 @@
+# UERANSIM: simulated gNB + UEs attaching to the Open5GS AMF
+nodeSelector: { lab/role: ran }
+amf:
+  hostname: open5gs-amf-ngap
+mcc: "001"
+mnc: "01"
+ues:
+  enabled: true
+  count: 10                     # scale with: make ues N=100
+  initialMSISDN: "0000000001"
+  initialIMSI: "001010000000001"
+  key: 465B5CE8B199B49FAA5F0A2EE238A6BC
+  op: E8ED289DEBA952E4283B54E88E6183CA
+  opType: OPC

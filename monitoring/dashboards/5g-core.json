@@ -1,0 +1,21 @@
+{
+  "title": "5G Core Overview",
+  "uid": "5g-core",
+  "schemaVersion": 39,
+  "refresh": "5s",
+  "panels": [
+    { "type": "stat", "title": "Registered UEs", "gridPos": {"x":0,"y":0,"w":6,"h":5},
+      "targets": [{ "expr": "sum(ran_ue)" }] },
+    { "type": "stat", "title": "Connected gNBs", "gridPos": {"x":6,"y":0,"w":6,"h":5},
+      "targets": [{ "expr": "sum(gnb)" }] },
+    { "type": "stat", "title": "Active PDU sessions", "gridPos": {"x":12,"y":0,"w":6,"h":5},
+      "targets": [{ "expr": "sum(fivegs_smffunction_sm_sessionnbr)" }] },
+    { "type": "stat", "title": "Registration success %", "gridPos": {"x":18,"y":0,"w":6,"h":5},
+      "targets": [{ "expr": "100 * sum(fivegs_amffunction_rm_regsuccinitreg) / clamp_min(sum(fivegs_amffunction_rm_reginitreq),1)" }] },
+    { "type": "timeseries", "title": "UPF throughput (N3 in/out)", "gridPos": {"x":0,"y":5,"w":24,"h":8},
+      "targets": [
+        { "expr": "rate(fivegs_ep_n3_gtp_indatavolumeqosleveln3upf[1m])*8", "legendFormat": "uplink bps" },
+        { "expr": "rate(fivegs_ep_n3_gtp_outdatavolumeqosleveln3upf[1m])*8", "legendFormat": "downlink bps" }
+      ] }
+  ]
+}

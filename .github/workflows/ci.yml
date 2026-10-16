@@ -1,0 +1,19 @@
+name: ci
+on: [push, pull_request]
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: pip install yamllint && yamllint -d relaxed .
+      - run: shellcheck scripts/*.sh
+      - run: python -m json.tool monitoring/dashboards/5g-core.json > /dev/null
+  e2e:
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+      - uses: helm/kind-action@v1
+        with: { config: cluster/kind.yaml, cluster_name: 5g-lab }
+      - run: make core ran
+      - run: make test
