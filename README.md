@@ -54,6 +54,14 @@ make down
 - **A replaced SMF breaks slice isolation.** After `smf-embb` was restarted (new NF instance), eMBB phones that re-attached got sessions from the **URLLC** SMF (10.46.x addresses). This kept happening even after the new eMBB SMF had registered with the NRF. The AMF/SCP keep selecting from the SMFs they already know, and nothing rejects a session from the wrong slice. Restarting the SCP and AMF clears it. In production: redundant SMFs per slice, and SMF selection strictly bound to the S-NSSAI.
 - **PFCP needs a headless Service.** Through a ClusterIP, PFCP replies come back from the pod IP and the SMF drops them, so session modifications time out. Each UPF's PFCP Service is headless for that reason.
 
+### Measured results (CI, kind on a GitHub runner, two independent runs)
+
+| Experiment | Killed | NF back in | eMBB | URLLC | mMTC |
+|---|---|---|---|---|---|
+| Control plane loss | `open5gs-amf` | 32 s | 0% loss | 0% loss | 0% loss |
+| eMBB user plane failure | `upf-embb` | 33 s | down, **no auto-recovery** (back after operator recovery in 184–200 s) | 0% loss | 0% loss |
+| URLLC session manager restart | `smf-urllc` | 32–33 s | 0% loss | 0% loss | 0% loss |
+
 Every CI run writes the measured table to the job summary and uploads it as the `chaos-results` artifact.
 
 ## Layout
