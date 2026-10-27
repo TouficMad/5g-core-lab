@@ -47,6 +47,12 @@ make down
 | **Kill the eMBB UPF** | Slice isolation: URLLC and mMTC should not notice |
 | **Restart the URLLC SMF** | Session manager failure: does the user plane survive? |
 
+### Findings
+- **AMF loss doesn't touch the user plane.** Killing the AMF caused 0% packet loss on every slice. Existing sessions keep flowing while the control plane restarts.
+- **Slices are isolated.** Killing the eMBB UPF caused 0% loss on URLLC and mMTC.
+- **A UPF restart needs operator action.** The SMF resolves its UPF's address once at startup, and a restarted UPF pod comes back with a new IP, so the slice stays down until its SMF is restarted and the phones re-attach. The chaos script does that and times it. In production you'd give the UPF a stable IP (e.g. Multus with a static address on N4/N3).
+- **PFCP needs a headless Service.** Through a ClusterIP, PFCP replies come back from the pod IP and the SMF drops them, so session modifications time out. Each UPF's PFCP Service is headless for that reason.
+
 Every CI run writes the measured table to the job summary and uploads it as the `chaos-results` artifact.
 
 ## Layout

@@ -25,7 +25,7 @@ summarize() {
     read -r tx rx <"$tmp/$s" || { tx=0; rx=0; }
     if [ "${tx:-0}" -eq 0 ]; then row+=" n/a |"; continue; fi
     cell=$(awk -v t="$tx" -v r="$rx" 'BEGIN{printf "%.1fs (%.0f%%)", (t-r)*0.2, 100*(t-r)/t}')
-    [ -f "$tmp/$s.reattach" ] && cell+=" ⚠️ no auto-recovery, UE re-attach $(cat "$tmp/$s.reattach")"
+    [ -f "$tmp/$s.reattach" ] && cell+=" ⚠️ no auto-recovery, SMF restart + UE re-attach $(cat "$tmp/$s.reattach")"
     row+=" $cell |"
   done
   echo "$row" >>"$OUT"
@@ -34,15 +34,19 @@ summarize() {
 
 slice_ok() { ue_exec "$1" ping -c 3 -W 1 -I uesimtun0 "${GW[$1]}" >/dev/null 2>&1; }
 
-# Any slice still down after the window: restart its UEs (re-registration +
-# new PDU session) and time it, so the next experiment starts from a healthy network
+# Any slice still down after the window: restart its SMF (Open5GS resolves the
+# UPF address once at startup, so a restarted UPF with a new pod IP is never
+# re-associated) and its UEs (re-registration + new PDU session). The time is
+# reported, and the next experiment starts from a healthy network.
 heal() {
   local s start
   rm -f "$tmp"/*.reattach
   for s in "${SLICES[@]}"; do
     slice_ok "$s" && continue
-    echo "  $s did not recover on its own, re-attaching UEs"
+    echo "  $s did not recover on its own: restarting smf-$s, then re-attaching UEs"
     start=$(date +%s)
+    kubectl -n "$NS" rollout restart "deploy/smf-$s" >/dev/null
+    kubectl -n "$NS" rollout status "deploy/smf-$s" --timeout=180s >/dev/null
     kubectl -n "$NS" rollout restart "deploy/ues-$s" >/dev/null
     kubectl -n "$NS" rollout status "deploy/ues-$s" --timeout=180s >/dev/null
     until slice_ok "$s"; do
