@@ -35,6 +35,7 @@ summarize() {
 slice_ok() { ue_exec "$1" ping -c 3 -W 1 -I uesimtun0 "${GW[$1]}" >/dev/null 2>&1; }
 
 # Any slice still down after the window gets operator-style recovery, timed:
+#  - SCP + AMF restart: a replaced SMF is not picked up from their NF caches
 #  - gNB restart: UERANSIM's gNB does not redo NG Setup when the AMF comes back,
 #    so after an AMF restart no UE can register until the gNB reconnects
 #  - SMF restart for the down slice: Open5GS resolves the UPF address once at
@@ -49,7 +50,7 @@ wait_nrf_registered() {
     kubectl -n "$NS" logs "deploy/$deploy" 2>/dev/null | grep -q 'NF registered \[Heartbeat' && return 0
     sleep 1
   done
-  echo "❌ $deploy did not register with the NRF within ${i}s"; exit 1
+  echo "  ⚠️ no 'NF registered' log from $deploy after ${i}s, continuing (slice checks will catch a real failure)"
 }
 
 heal() {
@@ -57,15 +58,23 @@ heal() {
   rm -f "$tmp"/*.reattach
   for s in "${SLICES[@]}"; do slice_ok "$s" || down+=("$s"); done
   [ ${#down[@]} -eq 0 ] && return 0
-  echo "  not recovered on their own: ${down[*]} -> restarting gNB, SMF(s), UEs"
+  echo "  not recovered on their own: ${down[*]} -> restarting SMF(s), SCP, AMF, gNB, UEs"
   start=$(date +%s)
-  kubectl -n "$NS" rollout restart deploy/ueransim-gnb >/dev/null
   for s in "${down[@]}"; do kubectl -n "$NS" rollout restart "deploy/smf-$s" >/dev/null; done
-  kubectl -n "$NS" rollout status deploy/ueransim-gnb --timeout=180s >/dev/null
   for s in "${down[@]}"; do
     kubectl -n "$NS" rollout status "deploy/smf-$s" --timeout=180s >/dev/null
     wait_nrf_registered "smf-$s"
   done
+  # A replaced SMF is not picked up by the AMF/SCP: UEs of that slice keep
+  # getting sessions from another slice's SMF. Reset their NF caches.
+  for nf in open5gs-scp open5gs-amf; do
+    kubectl -n "$NS" rollout restart "deploy/$nf" >/dev/null
+    kubectl -n "$NS" rollout status "deploy/$nf" --timeout=180s >/dev/null
+    wait_nrf_registered "$nf"
+  done
+  # the gNB has to redo NG Setup with the new AMF
+  kubectl -n "$NS" rollout restart deploy/ueransim-gnb >/dev/null
+  kubectl -n "$NS" rollout status deploy/ueransim-gnb --timeout=180s >/dev/null
   for s in "${SLICES[@]}"; do kubectl -n "$NS" rollout restart "deploy/ues-$s" >/dev/null; done
   for s in "${SLICES[@]}"; do
     kubectl -n "$NS" rollout status "deploy/ues-$s" --timeout=180s >/dev/null
