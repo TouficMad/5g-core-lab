@@ -1,5 +1,5 @@
 {
-  "title": "5G Core Overview",
+  "title": "5G Core - Network Slices",
   "uid": "5g-core",
   "schemaVersion": 39,
   "refresh": "5s",
@@ -8,14 +8,18 @@
       "targets": [{ "expr": "sum(ran_ue)" }] },
     { "type": "stat", "title": "Connected gNBs", "gridPos": {"x":6,"y":0,"w":6,"h":5},
       "targets": [{ "expr": "sum(gnb)" }] },
-    { "type": "stat", "title": "Active PDU sessions", "gridPos": {"x":12,"y":0,"w":6,"h":5},
+    { "type": "stat", "title": "Active PDU sessions (all slices)", "gridPos": {"x":12,"y":0,"w":6,"h":5},
       "targets": [{ "expr": "sum(fivegs_smffunction_sm_sessionnbr)" }] },
     { "type": "stat", "title": "Registration success %", "gridPos": {"x":18,"y":0,"w":6,"h":5},
       "targets": [{ "expr": "100 * sum(fivegs_amffunction_rm_regsuccinitreg) / clamp_min(sum(fivegs_amffunction_rm_reginitreq),1)" }] },
-    { "type": "timeseries", "title": "UPF throughput (N3 in/out)", "gridPos": {"x":0,"y":5,"w":24,"h":8},
+    { "type": "bargauge", "title": "PDU sessions per slice (SMF)", "gridPos": {"x":0,"y":5,"w":12,"h":7},
+      "targets": [{ "expr": "sum by (service) (fivegs_smffunction_sm_sessionnbr{service=~\"smf-.*\"})", "legendFormat": "{{service}}" }] },
+    { "type": "bargauge", "title": "Sessions per slice (UPF)", "gridPos": {"x":12,"y":5,"w":12,"h":7},
+      "targets": [{ "expr": "sum by (service) (fivegs_upffunction_upf_sessionnbr{service=~\"upf-.*\"})", "legendFormat": "{{service}}" }] },
+    { "type": "timeseries", "title": "N3 user-plane packets/s per slice", "gridPos": {"x":0,"y":12,"w":24,"h":8},
       "targets": [
-        { "expr": "rate(fivegs_ep_n3_gtp_indatavolumeqosleveln3upf[1m])*8", "legendFormat": "uplink bps" },
-        { "expr": "rate(fivegs_ep_n3_gtp_outdatavolumeqosleveln3upf[1m])*8", "legendFormat": "downlink bps" }
+        { "expr": "sum by (service) (rate(fivegs_ep_n3_gtp_indatapktn3upf{service=~\"upf-.*\"}[1m]))", "legendFormat": "{{service}} uplink" },
+        { "expr": "sum by (service) (rate(fivegs_ep_n3_gtp_outdatapktn3upf{service=~\"upf-.*\"}[1m]))", "legendFormat": "{{service}} downlink" }
       ] }
   ]
 }

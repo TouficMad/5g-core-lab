@@ -1,14 +1,27 @@
 #!/usr/bin/env bash
-# Verify a UE registered and can reach the internet through the UPF.
+# For every slice: all UEs registered, each got a PDU session from its own
+# slice's subnet, and user-plane traffic reaches that slice's UPF.
 set -euo pipefail
-NS=${NS:-5g}
-echo "Waiting for UERANSIM pod..."
-kubectl -n "$NS" wait --for=condition=Ready pod -l app.kubernetes.io/name=ueransim-gnb --timeout=300s
-POD=$(kubectl -n "$NS" get pod -l app.kubernetes.io/component=ues -o jsonpath='{.items[0].metadata.name}')
-for _ in $(seq 1 30); do
-  kubectl -n "$NS" exec "$POD" -- ip addr show uesimtun0 >/dev/null 2>&1 && break
-  sleep 5
+# shellcheck source=scripts/lib.sh
+source "$(dirname "$0")/lib.sh"
+
+fail=0
+for s in "${SLICES[@]}"; do
+  kubectl -n "$NS" rollout status "deploy/ues-$s" --timeout=300s >/dev/null
+  prefix=${GW[$s]%.*.*}   # e.g. 10.45
+  want=${UE_COUNT[$s]}
+  got=0
+  for _ in $(seq 1 36); do
+    got=$(ue_exec "$s" ip -4 -o addr show 2>/dev/null | grep -c "uesimtun.* inet $prefix\." || true)
+    [ "$got" -ge "$want" ] && break
+    sleep 5
+  done
+  read -r tx rx <<<"$(ping_stats "$s" 3)"
+  printf '%-6s sessions %s/%s in %s.0.0/16, ping to UPF %s/%s\n' "$s" "$got" "$want" "$prefix" "${rx:-0}" "${tx:-0}"
+  if [ "$got" -lt "$want" ] || [ "${rx:-0}" -eq 0 ]; then fail=1; fi
 done
-kubectl -n "$NS" exec "$POD" -- ip -4 addr show uesimtun0
-kubectl -n "$NS" exec "$POD" -- ping -c 3 -I uesimtun0 8.8.8.8
-echo "✅ UE registered, PDU session up, data flowing through UPF"
+
+if [ "$fail" -ne 0 ]; then
+  echo "❌ smoke test failed"; kubectl -n "$NS" get pods; exit 1
+fi
+echo "✅ all slices up: UEs registered, PDU sessions on the right SMF/UPF, data flowing"

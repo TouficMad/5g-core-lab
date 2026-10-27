@@ -1,43 +1,73 @@
 # 📶 5G Core Lab
 
-A cloud-native **5G Standalone core** running on Kubernetes: **Open5GS** (AMF, SMF, UPF, NRF, AUSF, UDM, PCF…) with **UERANSIM** simulating the gNB radio and phones (UEs). Includes Prometheus + Grafana for live KPIs and a CI pipeline that spins up the whole network and proves a UE can attach and pass traffic.
+A cloud-native **5G Standalone core** on Kubernetes with **three network slices** and **chaos tests**. **Open5GS** runs the core, **UERANSIM** simulates the gNB and phones, Prometheus + Grafana show live KPIs, and CI builds the whole network, attaches phones on every slice and then breaks things on purpose.
+
+## Architecture
 
 ```
- UEs ──(Uu, simulated)── gNB ──N2 (NGAP/SCTP)── AMF ── AUSF/UDM/NRF/PCF
-                          │                      │
-                          └──N3 (GTP-U)── UPF ──N4 (PFCP)── SMF
-                                           │
-                                          N6 ──► Internet
+                         ┌──────────── shared control plane ────────────┐
+                         │  AMF · NRF · SCP · NSSF · AUSF · UDM · UDR · PCF │
+                         └───────┬───────────────┬────────────────┬──────┘
+   Phones (UERANSIM)             │N2             │SBI             │SBI
+   ───────────────── ┌────────┐  │        ┌──────┴─────┐   ┌──────┴─────┐   ┌────────────┐
+   eMBB  ×3  ───────►│        │──┘        │ SMF-eMBB   │   │ SMF-URLLC  │   │ SMF-mMTC   │
+   URLLC ×3  ───────►│  gNB   │           └─────┬──────┘   └─────┬──────┘   └─────┬──────┘
+   mMTC  ×10 ───────►│ 3 slices│                │N4 (PFCP)       │N4              │N4
+                     └───┬────┘           ┌─────┴──────┐   ┌─────┴──────┐   ┌─────┴──────┐
+                         └── N3 (GTP-U) ─►│ UPF-eMBB   │   │ UPF-URLLC  │   │ UPF-mMTC   │
+                                          │ 10.45/16   │   │ 10.46/16   │   │ 10.47/16   │
+                                          └────────────┘   └────────────┘   └────────────┘
 ```
+
+| Slice | S-NSSAI (SST/SD) | Use case | Phones | UE subnet |
+|---|---|---|---|---|
+| eMBB | 1 / 000001 | Enhanced mobile broadband | 3 | 10.45.0.0/16 |
+| URLLC | 2 / 000002 | Ultra-reliable low latency | 3 | 10.46.0.0/16 |
+| mMTC | 3 / 000003 | Massive IoT | 10 | 10.47.0.0/16 |
+
+The control plane is shared. Each slice has its **own SMF and UPF**: the AMF and SCP pick the SMF from the S-NSSAI the phone asks for, so a failure in one slice's user plane stays in that slice.
 
 ## Quick start
 Requirements: Docker, kind, kubectl, helm.
 
 ```bash
-make up        # kind cluster + monitoring + 5G core + gNB/UEs
-make test      # UE registers, gets a PDU session, pings 8.8.8.8 via the UPF
-make ues N=100 # scale to 100 simulated phones
-make grafana   # http://localhost:3000 (admin/admin) → "5G Core Overview"
+make up        # cluster + monitoring + core + per-slice SMF/UPF + gNB + phones
+make test      # every phone registered, got an IP from ITS slice, reaches ITS UPF
+make chaos     # kill AMF / eMBB UPF / URLLC SMF, measure outage per slice
+make grafana   # http://localhost:3000 (admin/admin) → "5G Core - Network Slices"
 make down
 ```
 
-## Dashboards
-Registered UEs · connected gNBs · active PDU sessions · registration success rate · UPF uplink/downlink throughput.
+## Chaos experiments
+`scripts/chaos.sh` keeps every slice's phones pinging their UPF through the GTP tunnel, kills one network function and reports how long each slice lost traffic:
+
+| Experiment | What it shows |
+|---|---|
+| **Kill the AMF** | Control plane loss: do existing data sessions keep working? |
+| **Kill the eMBB UPF** | Slice isolation: URLLC and mMTC should not notice |
+| **Restart the URLLC SMF** | Session manager failure: does the user plane survive? |
+
+Every CI run writes the measured table to the job summary and uploads it as the `chaos-results` artifact.
 
 ## Layout
 | Path | Purpose |
 |---|---|
-| `cluster/kind.yaml` | 3-node cluster (core + RAN nodes) |
-| `helm/` | Open5GS & UERANSIM values (PLMN 001/01, seeded subscribers) |
+| `cluster/kind.yaml` | 3-node kind cluster |
+| `helm/open5gs-values.yaml` | Shared core, slice list (AMF/NSSF) and subscribers per slice |
+| `helm/slices/` | Per-slice SMF, UPF and phone values |
+| `helm/ueransim-gnb-values.yaml` | gNB (patched to 3 slices by `scripts/gnb-add-slices.sh`) |
+| `scripts/smoke-test.sh` | Per-slice attach + data test |
+| `scripts/chaos.sh` | Chaos experiments and results table |
 | `monitoring/` | kube-prometheus-stack values + Grafana dashboard |
-| `scripts/smoke-test.sh` | End-to-end attach + data test |
-| `.github/workflows/ci.yml` | Lint + full e2e in kind |
+| `.github/workflows/ci.yml` | Lint, full e2e and chaos run in kind |
 
 ## Roadmap
+- [x] 5G SA core on Kubernetes with live KPIs
+- [x] Network slicing (eMBB / URLLC / mMTC with dedicated SMF + UPF)
+- [x] Chaos tests with per-slice outage measurement
+- [ ] Per-slice QoS (5QI / AMBR) and throughput tests with iperf3
 - [ ] Terraform module for a cloud cluster (EKS)
-- [ ] Network slicing (eMBB / URLLC / mMTC with separate SMF+UPF)
-- [ ] Chaos tests: kill AMF/UPF and measure session recovery
 - [ ] IMS + VoNR, linking to [sip-voip-lab](https://github.com/TouficMad/sip-voip-lab)
 - [ ] SMSF → [sms-gateway](https://github.com/TouficMad/sms-gateway) bridge
 
-> Test PLMN and keys only. Not for production use.
+> Test PLMN (999/70) and test keys only. Not for production use.

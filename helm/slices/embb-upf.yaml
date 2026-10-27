@@ -1,0 +1,15 @@
+# eMBB - enhanced mobile broadband: UPF
+fullnameOverride: upf-embb
+config:
+  subnetList:
+  - subnet: 10.45.0.0/16
+    gateway: 10.45.0.1
+    dnn: internet
+    dev: ogstun
+    mask: 16
+    createDev: true
+    enableNAT: true
+metrics:
+  enabled: true
+  serviceMonitor:
+    enabled: true

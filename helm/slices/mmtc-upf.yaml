@@ -1,0 +1,15 @@
+# mMTC - massive IoT: UPF
+fullnameOverride: upf-mmtc
+config:
+  subnetList:
+  - subnet: 10.47.0.0/16
+    gateway: 10.47.0.1
+    dnn: internet
+    dev: ogstun
+    mask: 16
+    createDev: true
+    enableNAT: true
+metrics:
+  enabled: true
+  serviceMonitor:
+    enabled: true
