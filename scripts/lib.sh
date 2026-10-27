@@ -1,3 +1,5 @@
+#!/usr/bin/env bash
+# shellcheck disable=SC2034  # variables are used by the scripts that source this file
 # Shared slice definitions: name, UE count, UPF gateway (reachable only through the slice's tunnel)
 NS=${NS:-5g}
 SLICES=(embb urllc mmtc)

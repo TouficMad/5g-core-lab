@@ -18,7 +18,8 @@ probe_all() {
 
 # outage seconds = lost probes x 0.2s interval
 summarize() {
-  local exp=$1 target=$2 recovery=$3 row="| $exp | \`$target\` | $recovery |"
+  local exp=$1 target=$2 recovery=$3
+  local row="| $exp | \`$target\` | $recovery |"
   for s in "${SLICES[@]}"; do
     read -r tx rx <"$tmp/$s" || { tx=0; rx=0; }
     if [ "${tx:-0}" -eq 0 ]; then row+=" n/a |"; continue; fi
@@ -31,6 +32,7 @@ summarize() {
 # Kill a deployment's pod, return seconds until its replacement is Ready
 kill_and_time() {
   local deploy=$1 sel old start
+  # shellcheck disable=SC2016  # go-template, not shell
   sel=$(kubectl -n "$NS" get deploy "$deploy" \
     -o go-template='{{range $k, $v := .spec.selector.matchLabels}}{{$k}}={{$v}},{{end}}')
   sel=${sel%,}
