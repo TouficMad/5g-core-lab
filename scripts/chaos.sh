@@ -20,13 +20,37 @@ probe_all() {
 summarize() {
   local exp=$1 target=$2 recovery=$3
   local row="| $exp | \`$target\` | $recovery |"
+  local s tx rx cell
   for s in "${SLICES[@]}"; do
     read -r tx rx <"$tmp/$s" || { tx=0; rx=0; }
     if [ "${tx:-0}" -eq 0 ]; then row+=" n/a |"; continue; fi
-    row+=" $(awk -v t="$tx" -v r="$rx" 'BEGIN{printf "%.1fs (%.0f%%)", (t-r)*0.2, 100*(t-r)/t}') |"
+    cell=$(awk -v t="$tx" -v r="$rx" 'BEGIN{printf "%.1fs (%.0f%%)", (t-r)*0.2, 100*(t-r)/t}')
+    [ -f "$tmp/$s.reattach" ] && cell+=" ⚠️ no auto-recovery, UE re-attach $(cat "$tmp/$s.reattach")"
+    row+=" $cell |"
   done
   echo "$row" >>"$OUT"
   echo "$row"
+}
+
+slice_ok() { ue_exec "$1" ping -c 3 -W 1 -I uesimtun0 "${GW[$1]}" >/dev/null 2>&1; }
+
+# Any slice still down after the window: restart its UEs (re-registration +
+# new PDU session) and time it, so the next experiment starts from a healthy network
+heal() {
+  local s start
+  rm -f "$tmp"/*.reattach
+  for s in "${SLICES[@]}"; do
+    slice_ok "$s" && continue
+    echo "  $s did not recover on its own, re-attaching UEs"
+    start=$(date +%s)
+    kubectl -n "$NS" rollout restart "deploy/ues-$s" >/dev/null
+    kubectl -n "$NS" rollout status "deploy/ues-$s" --timeout=180s >/dev/null
+    until slice_ok "$s"; do
+      [ $(( $(date +%s) - start )) -gt 180 ] && { echo "❌ $s still down after re-attach"; exit 1; }
+      sleep 2
+    done
+    echo "$(( $(date +%s) - start ))s" >"$tmp/$s.reattach"
+  done
 }
 
 # Kill a deployment's pod, return seconds until its replacement is Ready
@@ -52,6 +76,7 @@ run() {
   probe_all; sleep 3
   recovery=$(kill_and_time "$target")
   wait
+  heal
   summarize "$exp" "$target" "$recovery"
 }
 
