@@ -48,7 +48,7 @@ make down
 | **Restart the URLLC SMF** | Session manager failure: does the user plane survive? |
 
 ### Findings
-- **AMF loss doesn't touch the user plane.** Killing the AMF caused 0% packet loss on every slice. Existing sessions keep flowing while the control plane restarts.
+- **AMF loss doesn't stop sessions that are already up, but blocks new ones.** Data on established sessions keeps flowing while the AMF restarts. UERANSIM's gNB doesn't redo NG Setup with the new AMF, though, so no phone can register again until the gNB reconnects. A real gNB retries SCTP/NG Setup, which this lab does by restarting the gNB.
 - **Slices are isolated.** Killing the eMBB UPF caused 0% loss on URLLC and mMTC.
 - **A UPF restart needs operator action.** The SMF resolves its UPF's address once at startup, and a restarted UPF pod comes back with a new IP, so the slice stays down until its SMF is restarted and the phones re-attach. The chaos script does that and times it. In production you'd give the UPF a stable IP (e.g. Multus with a static address on N4/N3).
 - **PFCP needs a headless Service.** Through a ClusterIP, PFCP replies come back from the pod IP and the SMF drops them, so session modifications time out. Each UPF's PFCP Service is headless for that reason.

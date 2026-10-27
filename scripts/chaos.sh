@@ -25,7 +25,7 @@ summarize() {
     read -r tx rx <"$tmp/$s" || { tx=0; rx=0; }
     if [ "${tx:-0}" -eq 0 ]; then row+=" n/a |"; continue; fi
     cell=$(awk -v t="$tx" -v r="$rx" 'BEGIN{printf "%.1fs (%.0f%%)", (t-r)*0.2, 100*(t-r)/t}')
-    [ -f "$tmp/$s.reattach" ] && cell+=" ⚠️ no auto-recovery, SMF restart + UE re-attach $(cat "$tmp/$s.reattach")"
+    [ -f "$tmp/$s.reattach" ] && cell+=" ⚠️ no auto-recovery (back after operator recovery: $(cat "$tmp/$s.reattach"))"
     row+=" $cell |"
   done
   echo "$row" >>"$OUT"
@@ -34,27 +34,33 @@ summarize() {
 
 slice_ok() { ue_exec "$1" ping -c 3 -W 1 -I uesimtun0 "${GW[$1]}" >/dev/null 2>&1; }
 
-# Any slice still down after the window: restart its SMF (Open5GS resolves the
-# UPF address once at startup, so a restarted UPF with a new pod IP is never
-# re-associated) and its UEs (re-registration + new PDU session). The time is
-# reported, and the next experiment starts from a healthy network.
+# Any slice still down after the window gets operator-style recovery, timed:
+#  - gNB restart: UERANSIM's gNB does not redo NG Setup when the AMF comes back,
+#    so after an AMF restart no UE can register until the gNB reconnects
+#  - SMF restart for the down slice: Open5GS resolves the UPF address once at
+#    startup, so a recreated UPF pod (new IP) is never re-associated
+#  - UE restart on every slice (the gNB restart drops all radio connections)
+# The next experiment then starts from a healthy network.
 heal() {
-  local s start
+  local s start down=()
   rm -f "$tmp"/*.reattach
+  for s in "${SLICES[@]}"; do slice_ok "$s" || down+=("$s"); done
+  [ ${#down[@]} -eq 0 ] && return 0
+  echo "  not recovered on their own: ${down[*]} -> restarting gNB, SMF(s), UEs"
+  start=$(date +%s)
+  kubectl -n "$NS" rollout restart deploy/ueransim-gnb >/dev/null
+  for s in "${down[@]}"; do kubectl -n "$NS" rollout restart "deploy/smf-$s" >/dev/null; done
+  kubectl -n "$NS" rollout status deploy/ueransim-gnb --timeout=180s >/dev/null
+  for s in "${down[@]}"; do kubectl -n "$NS" rollout status "deploy/smf-$s" --timeout=180s >/dev/null; done
+  for s in "${SLICES[@]}"; do kubectl -n "$NS" rollout restart "deploy/ues-$s" >/dev/null; done
   for s in "${SLICES[@]}"; do
-    slice_ok "$s" && continue
-    echo "  $s did not recover on its own: restarting smf-$s, then re-attaching UEs"
-    start=$(date +%s)
-    kubectl -n "$NS" rollout restart "deploy/smf-$s" >/dev/null
-    kubectl -n "$NS" rollout status "deploy/smf-$s" --timeout=180s >/dev/null
-    kubectl -n "$NS" rollout restart "deploy/ues-$s" >/dev/null
     kubectl -n "$NS" rollout status "deploy/ues-$s" --timeout=180s >/dev/null
     until slice_ok "$s"; do
-      [ $(( $(date +%s) - start )) -gt 180 ] && { echo "❌ $s still down after re-attach"; exit 1; }
+      [ $(( $(date +%s) - start )) -gt 300 ] && { echo "❌ $s still down after recovery"; exit 1; }
       sleep 2
     done
-    echo "$(( $(date +%s) - start ))s" >"$tmp/$s.reattach"
   done
+  for s in "${down[@]}"; do echo "$(( $(date +%s) - start ))s" >"$tmp/$s.reattach"; done
 }
 
 # Kill a deployment's pod, return seconds until its replacement is Ready
