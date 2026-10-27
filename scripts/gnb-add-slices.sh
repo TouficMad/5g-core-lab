@@ -2,7 +2,8 @@
 # The ueransim-gnb chart renders a single S-NSSAI into gnb.yaml.
 # Replace that list with all three slices and restart the gNB.
 set -euo pipefail
-NS=${NS:-5g}
+# shellcheck source=scripts/lib.sh
+source "$(dirname "$0")/lib.sh"
 CM=ueransim-gnb
 
 kubectl -n "$NS" get configmap "$CM" -o jsonpath='{.data.gnb\.yaml}' \
@@ -18,6 +19,5 @@ sys.stdout.write(new)
 
 kubectl -n "$NS" create configmap "$CM" --from-file=gnb.yaml=/tmp/gnb.yaml \
   --dry-run=client -o yaml | kubectl -n "$NS" apply -f -
-kubectl -n "$NS" rollout restart deployment "$CM"
-kubectl -n "$NS" rollout status deployment "$CM" --timeout=180s
+restart_and_settle "$CM"
 echo "gNB now advertises slices: eMBB (1/000001), URLLC (2/000002), mMTC (3/000003)"

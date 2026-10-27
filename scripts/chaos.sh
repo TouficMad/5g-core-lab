@@ -73,8 +73,7 @@ heal() {
     wait_nrf_registered "$nf"
   done
   # the gNB has to redo NG Setup with the new AMF
-  kubectl -n "$NS" rollout restart deploy/ueransim-gnb >/dev/null
-  kubectl -n "$NS" rollout status deploy/ueransim-gnb --timeout=180s >/dev/null
+  restart_and_settle ueransim-gnb
   for s in "${SLICES[@]}"; do kubectl -n "$NS" rollout restart "deploy/ues-$s" >/dev/null; done
   for s in "${SLICES[@]}"; do
     kubectl -n "$NS" rollout status "deploy/ues-$s" --timeout=180s >/dev/null
