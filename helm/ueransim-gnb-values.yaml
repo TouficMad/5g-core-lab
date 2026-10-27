@@ -1,0 +1,13 @@
+# UERANSIM gNB: one cell serving all three slices.
+# The chart only renders a single slice into gnb.yaml, so
+# scripts/gnb-add-slices.sh patches in the full list after install.
+fullnameOverride: ueransim-gnb
+amf:
+  hostname: open5gs-amf-ngap
+mcc: "999"
+mnc: "70"
+tac: "0001"
+sst: 1
+sd: "0x000001"
+ues:
+  enabled: false   # phones are deployed per slice from helm/slices/*-ues.yaml

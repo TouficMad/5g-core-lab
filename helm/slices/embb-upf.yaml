@@ -1,0 +1,21 @@
+# eMBB - enhanced mobile broadband: UPF
+# Headless PFCP service: the SMF talks to the UPF pod IP directly. Through a
+# ClusterIP, PFCP replies come back from the pod IP and the SMF drops them
+# (session modifications time out, e.g. after an AMF restart).
+fullnameOverride: upf-embb
+config:
+  subnetList:
+  - subnet: 10.45.0.0/16
+    gateway: 10.45.0.1
+    dnn: internet
+    dev: ogstun
+    mask: 16
+    createDev: true
+    enableNAT: true
+metrics:
+  enabled: true
+  serviceMonitor:
+    enabled: true
+services:
+  pfcp:
+    clusterIP: None

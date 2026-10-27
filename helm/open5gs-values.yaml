@@ -1,26 +1,42 @@
-# Open5GS 5G SA core (Gradiant chart). PLMN 001/01 = test network.
+# Open5GS 5G SA core (Gradiant umbrella chart), PLMN 999/70 (test network).
+# The umbrella's own SMF/UPF are disabled: each slice gets a dedicated SMF+UPF
+# (see helm/slices/), selected by the AMF/SCP through the SMF's S-NSSAI info.
+smf: { enabled: false }
+upf: { enabled: false }
+webui: { enabled: false }
+
+# 4G EPC off
 hss: { enabled: false }
 mme: { enabled: false }
 pcrf: { enabled: false }
 sgwc: { enabled: false }
 sgwu: { enabled: false }
-nodeSelector: { lab/role: core }
+sepp: { enabled: false }
 
-# Expose Prometheus metrics from AMF / SMF / UPF / PCF
 amf:
-  metrics: { enabled: true, serviceMonitor: { enabled: true } }
-smf:
   config:
-    pcrf: { enabled: false }
+    plmnList:
+      - plmn_id: { mcc: "999", mnc: "70" }
+        s_nssai:
+          - { sst: 1, sd: "000001" }   # eMBB - enhanced mobile broadband
+          - { sst: 2, sd: "000002" }   # URLLC - ultra-reliable low latency
+          - { sst: 3, sd: "000003" }   # mMTC - massive IoT
   metrics: { enabled: true, serviceMonitor: { enabled: true } }
-upf:
-  metrics: { enabled: true, serviceMonitor: { enabled: true } }
+
+nssf:
+  config:
+    nsiList:
+      - { uri: "", sst: 1, sd: "000001" }
+      - { uri: "", sst: 2, sd: "000002" }
+      - { uri: "", sst: 3, sd: "000003" }
+
 pcf:
   metrics: { enabled: true, serviceMonitor: { enabled: true } }
 
-# Seed subscribers in MongoDB (IMSIs match helm/ueransim-values.yaml)
+# Subscribers, one IMSI range per slice (must match helm/slices/*-ues.yaml)
 populate:
   enabled: true
   initCommands:
-    - open5gs-dbctl add_ue_with_apn 001010000000001 465B5CE8B199B49FAA5F0A2EE238A6BC E8ED289DEBA952E4283B54E88E6183CA internet
-    - open5gs-dbctl type 001010000000001 1
+    - "for i in $(seq 1 3); do open5gs-dbctl add_ue_with_slice $(printf '99970%010d' $i) 465B5CE8B199B49FAA5F0A2EE238A6BC E8ED289DEBA952E4283B54E88E6183CA internet 1 000001; done"
+    - "for i in $(seq 101 103); do open5gs-dbctl add_ue_with_slice $(printf '99970%010d' $i) 465B5CE8B199B49FAA5F0A2EE238A6BC E8ED289DEBA952E4283B54E88E6183CA internet 2 000002; done"
+    - "for i in $(seq 201 210); do open5gs-dbctl add_ue_with_slice $(printf '99970%010d' $i) 465B5CE8B199B49FAA5F0A2EE238A6BC E8ED289DEBA952E4283B54E88E6183CA internet 3 000003; done"

@@ -1,0 +1,20 @@
+# URLLC - ultra-reliable low latency: UES
+fullnameOverride: ues-urllc
+gnb:
+  hostname: ueransim-gnb
+mcc: '999'
+mnc: '70'
+sst: 2
+sd: '0x000002'
+count: 3
+initialMSISDN: '0000000101'
+key: 465B5CE8B199B49FAA5F0A2EE238A6BC
+op: E8ED289DEBA952E4283B54E88E6183CA
+opType: OPC
+apnList:
+- type: IPv4
+  apn: internet
+  slice:
+    sst: 2
+    sd: '0x000002'
+  emergency: false

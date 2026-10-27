@@ -6,14 +6,27 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: pip install yamllint && yamllint -d relaxed .
-      - run: shellcheck scripts/*.sh
+      - run: shellcheck -x scripts/*.sh
       - run: python -m json.tool monitoring/dashboards/5g-core.json > /dev/null
   e2e:
     runs-on: ubuntu-latest
     needs: lint
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: helm/kind-action@v1
         with: { config: cluster/kind.yaml, cluster_name: 5g-lab }
-      - run: make core ran
+      - run: make crds core slices ran ues
       - run: make test
+      - run: make chaos
+      - name: Upload chaos results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with: { name: chaos-results, path: results/, if-no-files-found: ignore }
+      - name: Debug on failure
+        if: failure()
+        run: |
+          kubectl -n 5g get pods -o wide
+          for d in $(kubectl -n 5g get deploy -o name); do
+            echo "::group::$d"; kubectl -n 5g logs "$d" --all-containers --tail=60 || true; echo "::endgroup::"
+          done
