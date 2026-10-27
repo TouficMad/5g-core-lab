@@ -41,6 +41,17 @@ slice_ok() { ue_exec "$1" ping -c 3 -W 1 -I uesimtun0 "${GW[$1]}" >/dev/null 2>&
 #    startup, so a recreated UPF pod (new IP) is never re-associated
 #  - UE restart on every slice (the gNB restart drops all radio connections)
 # The next experiment then starts from a healthy network.
+# Wait until a restarted NF has registered with the NRF. UEs that attach before
+# their slice's SMF is registered get a session from another slice's SMF.
+wait_nrf_registered() {
+  local deploy=$1 i
+  for i in $(seq 1 60); do
+    kubectl -n "$NS" logs "deploy/$deploy" 2>/dev/null | grep -q 'NF registered \[Heartbeat' && return 0
+    sleep 1
+  done
+  echo "❌ $deploy did not register with the NRF within ${i}s"; exit 1
+}
+
 heal() {
   local s start down=()
   rm -f "$tmp"/*.reattach
@@ -51,7 +62,10 @@ heal() {
   kubectl -n "$NS" rollout restart deploy/ueransim-gnb >/dev/null
   for s in "${down[@]}"; do kubectl -n "$NS" rollout restart "deploy/smf-$s" >/dev/null; done
   kubectl -n "$NS" rollout status deploy/ueransim-gnb --timeout=180s >/dev/null
-  for s in "${down[@]}"; do kubectl -n "$NS" rollout status "deploy/smf-$s" --timeout=180s >/dev/null; done
+  for s in "${down[@]}"; do
+    kubectl -n "$NS" rollout status "deploy/smf-$s" --timeout=180s >/dev/null
+    wait_nrf_registered "smf-$s"
+  done
   for s in "${SLICES[@]}"; do kubectl -n "$NS" rollout restart "deploy/ues-$s" >/dev/null; done
   for s in "${SLICES[@]}"; do
     kubectl -n "$NS" rollout status "deploy/ues-$s" --timeout=180s >/dev/null
